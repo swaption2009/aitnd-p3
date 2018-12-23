@@ -1,47 +1,42 @@
+import helper
 import numpy as np
 from IPython.core.display import display, HTML
 import plotly.graph_objs as go
-from plotly import tools
-import cvxopt
+import plotly.figure_factory as ff
 
 import plotly.offline as offline_py
 offline_py.init_notebook_mode(connected=True)
 
 
-_color_scheme = {
-    'index': '#B6B2CF',
-    'etf': '#2D3ECF',
-    'tracking_error': '#6F91DE',
-    'df_header': 'silver',
-    'df_value': 'white',
-    'df_line': 'silver',
-    'heatmap_colorscale': [(0, '#6F91DE'), (0.5, 'grey'), (1, 'red')]}
+def _generate_hover_text(x_text, y_text, z_values, x_label, y_label, z_label):
+    float_to_str = np.vectorize('{:.7f}'.format)
 
+    x_hover_text_values = np.tile(x_text, (len(y_text), 1))
+    y_hover_text_values = np.tile(y_text, (len(x_text), 1))
 
-def _generate_config():
-    return {'showLink': False, 'displayModeBar': False, 'showAxisRangeEntryBoxes': True}
+    padding_len = np.full(3, max(len(x_label), len(y_label), len(z_label))) - \
+                  [len(x_label), len(y_label), len(z_label)]
+
+    # Additional padding added to ticker and date to align
+    hover_text = x_label + ':  ' + padding_len[0] * ' ' + x_hover_text_values + '<br>' + \
+                 y_label + ':  ' + padding_len[1] * ' ' + y_hover_text_values.T + '<br>' + \
+                 z_label + ': ' + padding_len[2] * ' ' + float_to_str(z_values)
+
+    return hover_text
 
 
 def _generate_heatmap_trace(df, x_label, y_label, z_label, scale_min, scale_max):
-    x_hover_text_values = np.tile(df.columns, (len(df.index), 1))
-    y_hover_text_values = np.tile(df.index, (len(df.columns), 1))
-
-    padding_len = np.full(3, max(len(x_label), len(y_label), len(z_label))) -\
-                  [len(x_label), len(y_label), len(z_label)]
-    # Additional padding added to ticker and date to align
-    hover_text = y_label + ':  ' + padding_len[1] * ' ' + y_hover_text_values.T + '<br>' + \
-                 x_label + ':  ' + padding_len[0] * ' ' + x_hover_text_values + '<br>' + \
-                 z_label + ': ' + padding_len[2] * ' ' + df.applymap('{:.3f}'.format)
+    hover_text = _generate_hover_text(df.index, df.columns, df.values.T, x_label, y_label, z_label)
 
     return go.Heatmap(
-        x=df.columns,
-        y=df.index,
-        z=df.values,
+        x=df.index,
+        y=df.columns,
+        z=df.values.T,
         zauto=False,
         zmax=scale_max,
         zmin=scale_min,
-        colorscale=_color_scheme['heatmap_colorscale'],
-        text=hover_text.values,
+        colorscale=helper.color_scheme['heatmap_colorscale'],
+        text=hover_text,
         hoverinfo='text')
 
 
@@ -74,18 +69,18 @@ def large_dollar_volume_stocks(df, price_column, volume_column, top_percent):
     return dollar_traded.sort_values().tail(int(len(dollar_traded) * top_percent)).index.values.tolist()
 
 
-def plot_benchmark_returns(index_data, etf_data, title):
-    config = _generate_config()
+def plot_benchmark_returns(benchmark_data, etf_data, title):
+    config = helper.generate_config()
     index_trace = go.Scatter(
         name='Index',
-        x=index_data.index,
-        y=index_data,
-        line={'color': _color_scheme['index']})
+        x=benchmark_data.index,
+        y=benchmark_data,
+        line={'color': helper.color_scheme['index']})
     etf_trace = go.Scatter(
         name='ETF',
         x=etf_data.index,
         y=etf_data,
-        line={'color': _color_scheme['etf']})
+        line={'color': helper.color_scheme['etf']})
 
     layout = go.Layout(
         title=title,
@@ -96,25 +91,9 @@ def plot_benchmark_returns(index_data, etf_data, title):
     offline_py.iplot(fig, config=config)
 
 
-def plot_tracking_error(tracking_error, title):
-    config = _generate_config()
-    trace = go.Scatter(
-        x=tracking_error.index,
-        y=tracking_error,
-        line={'color': _color_scheme['tracking_error']})
-
-    layout = go.Layout(
-        title=title,
-        xaxis={'title': 'Date'},
-        yaxis={'title': 'Error', 'range': [-1.5, 1.5]})
-
-    fig = go.Figure(data=[trace], layout=layout)
-    offline_py.iplot(fig, config=config)
-
-
 def print_dataframe(df, n_rows=10, n_columns=3):
     missing_val_str = '...'
-    config = _generate_config()
+    config = helper.generate_config()
 
     formatted_df = df.iloc[:n_rows, :n_columns]
     formatted_df = formatted_df.applymap('{:.3f}'.format)
@@ -129,22 +108,22 @@ def print_dataframe(df, n_rows=10, n_columns=3):
         columnwidth=[1, 3],
         header={
             'values': [''] + list(formatted_df.columns.values),
-            'line': {'color': _color_scheme['df_line']},
-            'fill': {'color': _color_scheme['df_header']},
+            'line': {'color': helper.color_scheme['df_line']},
+            'fill': {'color': helper.color_scheme['df_header']},
             'font': {'size': 13}},
         cells={
             'values': formatted_df.reset_index().values.T,
-            'line': {'color': _color_scheme['df_line']},
-            'fill': {'color': [_color_scheme['df_header'], _color_scheme['df_value']]},
+            'line': {'color': helper.color_scheme['df_line']},
+            'fill': {'color': [helper.color_scheme['df_header'], helper.color_scheme['df_value']]},
             'font': {'size': 13}})
 
     offline_py.iplot([trace], config=config)
 
 
 def plot_weights(weights, title):
-    config = _generate_config()
+    config = helper.generate_config()
     graph_path = 'graphs/{}.html'.format(_sanatize_string(title))
-    trace = _generate_heatmap_trace(weights, 'Date', 'Ticker', 'Weight', 0.0, 0.2)
+    trace = _generate_heatmap_trace(weights.sort_index(axis=1, ascending=False), 'Date', 'Ticker', 'Weight', 0.0, 0.2)
     layout = go.Layout(
         title=title,
         xaxis={'title': 'Dates'},
@@ -157,9 +136,9 @@ def plot_weights(weights, title):
 
 
 def plot_returns(returns, title):
-    config = _generate_config()
+    config = helper.generate_config()
     graph_path = 'graphs/{}.html'.format(_sanatize_string(title))
-    trace = _generate_heatmap_trace(returns, 'Date', 'Ticker', 'Weight', -0.3, 0.3)
+    trace = _generate_heatmap_trace(returns.sort_index(axis=1, ascending=False), 'Date', 'Ticker', 'Weight', -0.3, 0.3)
     layout = go.Layout(
         title=title,
         xaxis={'title': 'Dates'},
@@ -171,51 +150,82 @@ def plot_returns(returns, title):
                  .format(title, graph_path)))
 
 
-def plot_covariance(xty, xtx):
-    config = _generate_config()
+def plot_covariance_returns_correlation(correlation, title):
+    config = helper.generate_config()
+    graph_path = 'graphs/{}.html'.format(_sanatize_string(title))
+    data = []
 
-    xty_trace = go.Bar(
+    dendro_top = ff.create_dendrogram(correlation, orientation='bottom')
+    for i in range(len(dendro_top['data'])):
+        dendro_top['data'][i]['yaxis'] = 'y2'
+    data.extend(dendro_top['data'])
+
+    dendro_left = ff.create_dendrogram(correlation, orientation='right')
+    for i in range(len(dendro_left['data'])):
+        dendro_left['data'][i]['xaxis'] = 'x2'
+    data.extend(dendro_left['data'])
+
+    heatmap_hover_text = _generate_hover_text(
+        correlation.index,
+        correlation.columns,
+        correlation.values,
+        'Ticker 2',
+        'Ticker 1',
+        'Correlation')
+    heatmap_trace = go.Heatmap(
+        x=dendro_top['layout']['xaxis']['tickvals'],
+        y=dendro_left['layout']['yaxis']['tickvals'],
+        z=correlation.values,
+        zauto=False,
+        zmax=1.0,
+        zmin=-1.0,
+        text=heatmap_hover_text,
+        hoverinfo='text')
+    data.append(heatmap_trace)
+
+    xaxis1_layout = {
+        'showgrid': False,
+        'showline': False,
+        'zeroline': False,
+        'showticklabels': False,
+        'ticks': ""}
+    xaxis2_layout = {
+        'showgrid': False,
+        'zeroline': False,
+        'showticklabels': False}
+
+    layout = go.Layout(
+        title=title,
+        showlegend=False,
+        width=800,
+        height=800)
+
+    figure = go.Figure(data=data, layout=layout)
+    figure['layout']['xaxis'].update({'domain': [.15, 1]})
+    figure['layout']['xaxis'].update(xaxis1_layout)
+    figure['layout']['yaxis'].update({'domain': [0, .85]})
+    figure['layout']['yaxis'].update(xaxis1_layout)
+
+    figure['layout']['xaxis2'].update({'domain': [0, .15]})
+    figure['layout']['xaxis2'].update(xaxis2_layout)
+    figure['layout']['yaxis2'].update({'domain': [.825, .975]})
+    figure['layout']['yaxis2'].update(xaxis2_layout)
+
+    offline_py.plot(figure, config=config, filename=graph_path, auto_open=False)
+    display(HTML('The graph for {} is too large. You can view it <a href="{}" target="_blank">here</a>.'
+                 .format(title, graph_path)))
+
+
+def plot_xty(xty, title):
+    config = helper.generate_config()
+    trace = go.Bar(
         x=xty.index,
         y=xty.values)
-    xtx_trace = _generate_heatmap_trace(xtx, 'Ticker 2', 'Ticker 1', 'Covariance', 0.0, 1.0)
 
-    fig = tools.make_subplots(rows=1, cols=2, subplot_titles=['XTY', 'XTX'], print_grid=False)
-    fig.append_trace(xty_trace, 1, 1)
-    fig.append_trace(xtx_trace, 1, 2)
-    fig['layout']['xaxis1'].update(title='Tickers')
-    fig['layout']['yaxis1'].update(title='Covariance')
-    fig['layout']['xaxis2'].update(title='Tickers')
-    fig['layout']['yaxis2'].update(title='Tickers')
+    layout = go.Layout(
+        title=title,
+        xaxis={'title': 'Tickers'},
+        yaxis={'title': 'Covariance'})
 
+    fig = go.Figure(data=[trace], layout=layout)
     offline_py.iplot(fig, config=config)
-
-
-def tracking_error(index_weighted_cumulative_returns, etf_weighted_cumulative_returns):
-    assert index_weighted_cumulative_returns.index.equals(etf_weighted_cumulative_returns.index)
-    return etf_weighted_cumulative_returns - index_weighted_cumulative_returns
-
-
-def solve_qp(P, q):
-    assert len(P.shape) == 2
-    assert len(q.shape) == 1
-    assert P.shape[0] == P.shape[1] == q.shape[0]
-
-    nn = len(q)
-
-    g = cvxopt.spmatrix(-1, range(nn), range(nn))
-    a = cvxopt.matrix(np.ones(nn), (1, nn))
-    b = cvxopt.matrix(1.0)
-    h = cvxopt.matrix(np.zeros(nn))
-
-    P = cvxopt.matrix(P)
-    q = -cvxopt.matrix(q)
-
-    # Min cov
-    # Max return
-    cvxopt.solvers.options['show_progress'] = False
-    sol = cvxopt.solvers.qp(P, q, g, h, a, b)
-
-    if 'optimal' not in sol['status']:
-        return np.array([])
-
-    return np.array(sol['x']).flatten()
